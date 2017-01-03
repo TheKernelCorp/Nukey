@@ -48,9 +48,9 @@ if __FILE__ == $PROGRAM_NAME
         keymap = String.new
         puts "[#{file_name}] Writing keymap..."
         offset += 4
-        while offset < contents.size
-            byte = contents[offset]
-            keymap << "\\n#{byte}"
+        while offset < contents.size && offset < offset + 256
+            keyval = contents[offset].to_s 8
+            keymap << "\\#{keyval}"
             offset += 1
         end
         File.open(file, 'w') { |file| file.write keymap }
