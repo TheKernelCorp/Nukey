@@ -8,6 +8,7 @@ def which(cmd)
       return exe if File.executable?(exe) && !File.directory?(exe)
     }
   end
+  return nil
 end
 
 if __FILE__ == $PROGRAM_NAME
@@ -20,7 +21,7 @@ if __FILE__ == $PROGRAM_NAME
     Dir.glob('sources/*.{s,asm}') do |file|
         file_name = File.basename file, '.*'
         puts "[#{file_name}] Assembling..."
-        exec = "#{nasm} -O0 -Fnull -fobj -o\"keymaps/#{file_name}\" \"#{file}\""
+        exec = "\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{file_name}\" \"#{file}\""
         IO.popen exec do |io|
             Process.wait io.pid
         end
@@ -37,8 +38,8 @@ if __FILE__ == $PROGRAM_NAME
             found &= contents[offset + 1] == (MAGIC >> 0x10) & 0xFF
             found &= contents[offset + 2] == (MAGIC >> 0x08) & 0xFF
             found &= contents[offset + 3] == (MAGIC >> 0x00) & 0xFF
-            offset += 1
             break if found
+            offset += 1
         end
         unless found
             puts "[#{file_name}] Failed to validate! Skipping."
@@ -49,7 +50,7 @@ if __FILE__ == $PROGRAM_NAME
         offset += 4
         while offset < contents.size
             byte = contents[offset]
-            keymap << "\\x#{byte}"
+            keymap << "\\n#{byte}"
             offset += 1
         end
         File.open(file, 'w') { |file| file.write keymap }
