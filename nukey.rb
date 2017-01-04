@@ -12,27 +12,44 @@ def which(cmd)
 end
 
 if __FILE__ == $PROGRAM_NAME
+    # Try to find nasm, which is used for assembling
+    # the keymap sources into a format processable by nukey.
     nasm = which 'nasm'
     if nasm.nil?
+        # Exit if nasm can't be found.
         puts 'Unable to find `nasm` executable.'
         exit 1
     end
     Dir.mkdir 'keymaps' unless Dir.exists? 'keymaps'
-    Dir.glob('sources/*.{s,asm}') do |file|
-        file_name = File.basename file, '.*'
-        puts "[#{file_name}] Assembling..."
-        exec = "\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{file_name}\" \"#{file}\""
+    # Find all assembly sources in the ./sources directory.
+    # Those are the keymaps, in a format readable by nasm.
+    Dir.glob('sources/*.{s,asm}') do |file_name|
+        key_layout = File.basename file_name, '.*'
+        print "[#{key_layout}] Assembling..."
+        # Compile the current keymap with nasm.
+        # nasm flags:
+        # -Oo       = Apply no optimizations
+        # -Fnull    = Include no debug information
+        # -fobj     = Produce a flat binary
+        exec = "\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{key_layout}.bin\" \"#{file_name}\""
         IO.popen exec do |io|
+            # Wait for nasm to exit
             Process.wait io.pid
         end
+        puts "OK"
     end
-    Dir.glob('keymaps/*') do |file|
-        file_name = File.basename file
+    # Find all flat binaries produced in the previous step.
+    Dir.glob('keymaps/*.bin') do |file_name|
+        # Get the name of the current key layout.
+        key_layout = File.basename file_name, '.*'
         offset = 0
         found = false
-        contents = File.read(file).bytes.to_a
-        puts "[#{file_name}] Validating..."
+        contents = File.read(file_name).bytes.to_a
+        File.delete file_name
+        print "[#{key_layout}] Validating..."
         while offset < contents.size
+            # Test whether the next four bytes are equal to the magic number.
+            # If they are, we've found our entry point.
             found = true
             found &= contents[offset + 0] == (MAGIC >> 0x18) & 0xFF
             found &= contents[offset + 1] == (MAGIC >> 0x10) & 0xFF
@@ -41,18 +58,61 @@ if __FILE__ == $PROGRAM_NAME
             break if found
             offset += 1
         end
+        # Add four to the offset to skip the magic number.
+        offset += 4
         unless found
-            puts "[#{file_name}] Failed to validate! Skipping."
+            # Stop processing this keymap if the magic number couldn't be found.
+            puts "FAILED"
+            puts "[#{key_layout}] Failed to validate! Skipping."
             break
         end
+        puts "OK"
+        print "[#{key_layout}] Creating Crystal source..."
+        max_offset = [contents.size, offset + 256].min
+        # Construct an empty string for the keymap and append some
+        # boostrap code to it, to make it work with Crystal.
         keymap = String.new
-        puts "[#{file_name}] Writing keymap..."
-        offset += 4
-        while offset < contents.size && offset < offset + 256
-            keyval = contents[offset].to_s 8
-            keymap << "\\#{keyval}"
+        keymap << "KEYMAP_#{key_layout.upcase} = "
+        keymap << '"'
+        # Iterate over the key codes.
+        while offset < max_offset
+            keycode = contents[offset]
+            # There are special cases where the actual ascii character
+            # of the keycode can be embedded into the string directly.
+            if true &&
+                keycode >= 32 &&    # greater than or equal to ' '
+                keycode <= 126 &&   # less than or equal to '~'
+                keycode != 34 &&    # not '"'
+                keycode != 92       # not '\\'
+                # Embed the ascii character into the keymap
+                keymap << keycode.chr
+            else
+                # If the aforementioned special cases don't apply,
+                # an octal escape will be used to embed the keycode
+                # into the string. However, this can lead to issues
+                # if the next keycode is embedded as an ascii character
+                # and it starts with a number.
+                keycode_oct = keycode.to_s 8
+                if offset + 1 < max_offset
+                    # Read the next keycode.
+                    next_keycode = contents[offset + 1]
+                    if next_keycode >= 32 && next_keycode <= 126
+                        # The special cases probably apply for the next keycode,
+                        # so we justify its octal representation with zeroes.
+                        keymap << "\\#{keycode_oct.rjust 3, '0'}"
+                        offset += 1
+                        next
+                    end
+                end
+                # Embed the keycode with an octal escape.
+                keymap << "\\#{keycode_oct}"
+            end
             offset += 1
         end
-        File.open(file, 'w') { |file| file.write keymap }
+        keymap << '"'
+        # Create a Crystal source file from the keymap.
+        file_name = "keymaps/#{key_layout}.cr"
+        File.open(file_name, 'w') { |file| file.write keymap }
+        puts "OK"
     end
 end
