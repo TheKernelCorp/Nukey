@@ -8,14 +8,14 @@ def which(cmd)
       return exe if File.executable?(exe) && !File.directory?(exe)
     }
   end
-  return nil
+  nil
 end
 
 if __FILE__ == $PROGRAM_NAME
     # Try to find nasm, which is used for assembling
     # the keymap sources into a format processable by nukey.
     nasm = which 'nasm'
-    if nasm.nil?
+    unless nasm
         # Exit if nasm can't be found.
         puts 'Unable to find `nasm` executable.'
         exit 1
@@ -31,11 +31,9 @@ if __FILE__ == $PROGRAM_NAME
         # -Oo       = Apply no optimizations
         # -Fnull    = Include no debug information
         # -fobj     = Produce a flat binary
-        exec = "\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{key_layout}.bin\" \"#{file_name}\""
-        IO.popen exec do |io|
-            # Wait for nasm to exit
-            Process.wait io.pid
-        end
+
+        status = system("\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{key_layout}.bin\" \"#{file_name}\"")
+        raise "Error in calling #{nasm}" unless status
         puts "OK"
     end
     # Find all flat binaries produced in the previous step.
@@ -71,8 +69,7 @@ if __FILE__ == $PROGRAM_NAME
         max_offset = [contents.size, offset + 256].min
         # Construct an empty string for the keymap and append some
         # boostrap code to it, to make it work with Crystal.
-        keymap = String.new
-        keymap << "KEYMAP_#{key_layout.upcase} = "
+        keymap = "KEYMAP_#{key_layout.upcase} = "
         keymap << '"'
         # Iterate over the key codes.
         while offset < max_offset
@@ -111,8 +108,7 @@ if __FILE__ == $PROGRAM_NAME
         end
         keymap << '"'
         # Create a Crystal source file from the keymap.
-        file_name = "keymaps/#{key_layout}.cr"
-        File.open(file_name, 'w') { |file| file.write keymap }
+        File.write("keymaps/#{key_layout}.cr", keymap)
         puts "OK"
     end
 end
