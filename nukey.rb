@@ -31,9 +31,12 @@ if __FILE__ == $PROGRAM_NAME
         # -Oo       = Apply no optimizations
         # -Fnull    = Include no debug information
         # -fobj     = Produce a flat binary
-
         status = system("\"#{nasm}\" -O0 -Fnull -fobj -o\"keymaps/#{key_layout}.bin\" \"#{file_name}\"")
-        raise "Error in calling #{nasm}" unless status
+        unless status
+            puts "FAILED"
+            puts "[#{key_layout}] nasm invocation failed."
+            exit 1
+        end
         puts "OK"
     end
     # Find all flat binaries produced in the previous step.
@@ -83,6 +86,12 @@ if __FILE__ == $PROGRAM_NAME
                 keycode != 92       # not '\\'
                 # Embed the ascii character into the keymap
                 keymap << keycode.chr
+            elsif keycode == 8 # '\b'
+                keymap << "\\b"
+            elsif keycode == 9 # '\t'
+                keymap << "\\t"
+            elsif keycode == 27 # '\e'
+                keymap << "\\e"
             else
                 # If the aforementioned special cases don't apply,
                 # an octal escape will be used to embed the keycode
